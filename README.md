@@ -9,20 +9,31 @@
 ## 📖 Tổng quan dự án (Project Overview)
 Dự án tập trung xây dựng hệ thống tự động phát hiện và phân loại khiếm khuyết trên bề mặt sản phẩm công nghiệp (PCB, vải dệt). Hệ thống kết hợp sức mạnh của **3 kỹ thuật xử lý ảnh truyền thống** để trích xuất vùng lỗi và **1 mô hình Machine Learning** để phân loại chính xác loại lỗi.
 
-## 🛠 Quy trình xử lý (Pipeline 3+1) & Các phương pháp
-Dự án được thiết kế theo luồng xử lý chuẩn công nghiệp, bám sát chương trình giảng dạy với **4 phương pháp chính** và **3 phương pháp phụ trợ**:
+## 🛠 Quy trình xử lý (Pipeline 3+1) & Đặc trưng Phương pháp
+
+Hệ thống được thiết kế theo mô hình xử lý dòng dữ liệu tuần tự khép kín, ứng dụng các phương pháp toán lý và phân tích thống kê cốt lõi sau:
 
 ### Các phương pháp chính (Core Methods)
-1.  **Tiền xử lý (Kỹ thuật 1):** Khử nhiễu không gian và nhị phân hóa bằng phương pháp Otsu (Otsu's Thresholding).
-2.  **Xử lý hình thái học (Kỹ thuật 2):** Sử dụng các toán tử Erosion, Dilation, Opening, Closing (với các Structuring Elements đa dạng) để tách biệt và làm rõ vùng lỗi.
-3.  **Trích xuất đặc trưng (Kỹ thuật 3):** Trích xuất thông qua Moment không gian, tính toán diện tích (Area), chu vi (Perimeter), độ lệch tâm (Eccentricity) đảm bảo tính bất biến hình học.
-4.  **Phân loại Machine Learning (Mô hình AI):** Sử dụng mô hình Support Vector Machine (SVM) / Random Forest để phân loại lỗi dựa trên bộ đặc trưng đã trích xuất, ngăn chặn over-fitting.
+
+#### 1. Tiền xử lý: Phân đoạn ảnh bằng thuật toán Otsu (Otsu's Thresholding)
+- **Đặc trưng phương pháp:** Đây là một thuật toán tìm ngưỡng phân đoạn nhị phân tự động không giám sát (unsupervised). Bản chất toán học của phương pháp là duyệt qua toàn bộ dải giá trị histogram để tính toán toán tử tìm một ngưỡng $T$ tối ưu hóa, sao cho phương sai giữa hai lớp nền và đối tượng (inter-class variance) đạt giá trị cực đại, hoặc phương sai nội bộ lớp (within-class variance) đạt giá trị cực tiểu. Phương pháp này hoạt động hoàn toàn dựa trên phân bố thống kê tần suất của điểm ảnh mà không phụ thuộc vào tri thức tiên nghiệm về cấu trúc không gian hình học của ảnh.
+
+#### 2. Xử lý chính: Bộ lọc Toán học Hình thái (Mathematical Morphology Filters)
+- **Đặc trưng phương pháp:** Là một nhóm các toán tử phi tuyến tính được xây dựng vững chắc trên nền tảng của lý thuyết tập hợp (Set Theory). Đặc trưng cốt lõi của phương pháp là mức độ và cấu trúc tác động lên dữ liệu ma trận được quyết định hoàn toàn bởi hình dáng hình học và kích thước hình học của phần tử cấu trúc (Structuring Element / Kernel). Phép toán Mở (Opening) mang đặc tính toán học triệt tiêu hoàn toàn các cấu trúc đối tượng có kích thước nhỏ hơn phần tử cấu trúc mà không làm dịch chuyển ranh giới tổng thể, trong khi phép toán Đóng (Closing) mang đặc tính lấp đầy các khoảng trống cấu trúc bên trong một vùng liên thông.
+
+#### 3. Trích xuất đặc trưng: Tính toán Moment Không gian (Spatial Moments Feature Extraction)
+- **Đặc trưng phương pháp:** Phương pháp lượng hóa cấu trúc không gian hình học của thực thể thành các trị số vô hướng đặc trưng độc lập. Đặc tính quan trọng nhất của phương pháp này là tính bất biến đối với các phép biến đổi hình học cơ bản. Việc sử dụng toán tử các moment trung tâm (Central Moments) đảm bảo tính bất biến với phép tịnh tiến không gian (Translation Invariance), và tỷ số hình học như Aspect Ratio hay Độ lệch tâm (Eccentricity) đảm bảo tính bất biến với phép thu phóng ma trận (Scale Invariance), giúp tiến trình nhận dạng diễn ra độc lập với vị trí không gian vật lý của đối tượng lỗi trên ảnh.
+
+#### 4. Phân loại thực thể: Bộ phân loại Học máy (Support Vector Machine / Random Forest)
+- **Đặc trưng phương pháp:** - *Đối với SVM:* Phương pháp học máy có giám sát cấu trúc hóa việc tối đa hóa lề (margin maximization) giữa các siêu phẳng phân lớp dữ liệu bằng cách tìm kiếm một siêu phẳng (hyperplane) phân cách tối ưu hình học trong không gian đặc trưng đa chiều (Hyper-dimensional feature space).
+  - *Đối với Random Forest:* Thuật toán sử dụng cơ chế học tập tập hợp (Ensemble Learning) dựa trên kỹ thuật lấy mẫu và kết hợp (Bagging). Đặc tính nổi bật là khả năng tổng hợp kết quả dự đoán của hàng loạt cây quyết định độc lập nhằm giảm thiểu tối đa phương sai (variance) của toàn hệ thống, ngăn chặn hiệu quả hiện tượng quá khớp (over-fitting) trên các tập dữ liệu nhiễu cao.
 
 ### Các phương pháp phụ trợ (Auxiliary Methods)
-- **Connected Component Labeling (CCL):** Thuật toán duyệt đồ thị phân tách các cụm pixel kề nhau thành từng đối tượng lỗi độc lập.
-- **Median Filtering:** Lọc phi tuyến tính triệt tiêu nhiễu xung ở bước tiền xử lý.
-- **Bicubic Interpolation:** Nội suy không gian tái lập kích thước ma trận ảnh hiển thị trên Web Browser.
 
+Toàn bộ đường ống kiến trúc hệ thống (Dataflow Pipeline) còn tích hợp ngầm định các thuật toán bổ trợ toán học sau nhằm đảm bảo sự luân chuyển dữ liệu không bị sai lệch:
+- **Connected Component Labeling (CCL - Gắn nhãn thành phần liên thông):** Thuật toán duyệt đồ thị (Two-pass algorithm) để phân tách, nhóm các cụm điểm ảnh kề nhau thành từng đối tượng khuyết tật độc lập đưa vào bộ trích xuất đặc trưng.
+- **Median Filtering (Lọc trung vị):** Phương pháp lọc không gian phi tuyến tính tích hợp ở đầu pipeline nhằm triệt tiêu các tín hiệu nhiễu xung (nhiễu muối tiêu) từ cảm biến thu nhận quang học phần cứng nhưng vẫn bảo toàn độ sắc nét của ranh giới đường biên lỗi.
+- **Bicubic Interpolation (Nội suy ảnh cấp ba):** Kỹ thuật nội suy không gian được hệ thống sử dụng ở tầng trình diễn để tái lập và đồng nhất kích thước ma trận ảnh hiển thị trên giao diện người dùng mà không làm rạn nứt cấu trúc ma trận dữ liệu lỗi gốc.
 ---
 
 ## 📁 Cấu trúc thư mục (Repository Structure)
