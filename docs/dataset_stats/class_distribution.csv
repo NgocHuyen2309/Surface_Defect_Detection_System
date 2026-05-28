@@ -1,0 +1,13 @@
+split_class,count
+test/defect_free,334
+test/hole,57
+test/horizontal,28
+test/lines,32
+test/stain,80
+test/vertical,21
+train/defect_free,1332
+train/hole,224
+train/horizontal,108
+train/lines,125
+train/stain,318
+train/vertical,80
