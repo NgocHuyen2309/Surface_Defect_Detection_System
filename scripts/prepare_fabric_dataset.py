@@ -24,6 +24,7 @@ MASK_KEYWORDS = {
     "label",
     "labels",
     "segmentation",
+    "processed",
 }
 
 LABEL_RULES = [

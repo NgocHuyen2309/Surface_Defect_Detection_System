@@ -6,9 +6,9 @@ import cv2
 import numpy as np
 
 try:
-    from .preprocessing import preprocess_image, save_image
+    from .preprocessing import ImagePreprocessor, save_image
 except ImportError:
-    from preprocessing import preprocess_image, save_image
+    from preprocessing import ImagePreprocessor, save_image
 
 
 def get_structuring_element(shape: str, size: int) -> np.ndarray:
@@ -39,27 +39,32 @@ def run_morphological_pipeline(
     image_path: Path,
     output_dir: Path | None = None,
     median_kernel: int = 5,
-    invert_otsu: bool = False,
+    defect_mode: str = "bright",
+    k_std: float = 4.0,
+    apply_tophat: bool = True,
+    tophat_kernel: int = 51,
     resize_width: int | None = None,
     morph_shape: str = "rect",
     morph_size: int = 5,
     iterations: int = 1,
 ) -> dict[str, np.ndarray | float]:
-    """Chạy toàn bộ pipeline: Tiền xử lý -> Otsu -> Morphological."""
+    """Chạy toàn bộ pipeline: Tiền xử lý -> Statistical Threshold -> Morphological."""
     
-    preprocessing = preprocess_image(
-        image_path=image_path,
-        output_dir=output_dir,
+    preprocessor = ImagePreprocessor(
         median_kernel=median_kernel,
-        invert_otsu=invert_otsu,
         resize_width=resize_width,
+        defect_mode=defect_mode,
+        k_std=k_std,
+        apply_tophat=apply_tophat,
+        tophat_kernel=tophat_kernel
     )
+    preprocessing = preprocessor.process(image_path, output_dir)
     
-    otsu_binary = preprocessing["otsu_binary"]
+    binary_mask = preprocessing["binary_mask"]
     kernel = get_structuring_element(morph_shape, morph_size)
     
     # Chạy Opening để khử nhiễu (Dùng iter = 1 để tránh làm rách thêm viền lỗi)
-    opened_image = apply_opening(otsu_binary, kernel, iterations=1)
+    opened_image = apply_opening(binary_mask, kernel, iterations=1)
     
     # Chạy Closing với số vòng lặp linh hoạt (Cascading) để lấp kín các khe hở lớn
     closed_image = apply_closing(opened_image, kernel, iterations=iterations)
