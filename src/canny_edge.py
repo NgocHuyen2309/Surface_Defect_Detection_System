@@ -8,9 +8,9 @@ import cv2
 import numpy as np
 
 try:
-    from .preprocessing import preprocess_image, save_image
+    from .preprocessing import ImagePreprocessor, save_image
 except ImportError:
-    from preprocessing import preprocess_image, save_image
+    from preprocessing import ImagePreprocessor, save_image
 
 
 def gaussian_smoothing(gray_image: np.ndarray, kernel_size: int = 5, sigma: float = 1.4) -> np.ndarray:
@@ -36,33 +36,37 @@ def compute_gradient(smoothed_image: np.ndarray) -> tuple[np.ndarray, np.ndarray
 
 
 def non_maximum_suppression(magnitude: np.ndarray, angle: np.ndarray) -> np.ndarray:
-    """Làm mảnh biên bằng cách giữ cực đại cục bộ theo hướng gradient."""
+    """Làm mảnh biên bằng cách giữ cực đại cục bộ (Tối ưu Numpy Vectorized)."""
     height, width = magnitude.shape
     suppressed = np.zeros((height, width), dtype=np.float32)
 
-    # So sánh mỗi điểm ảnh với hai điểm lân cận theo hướng gradient
-    for row in range(1, height - 1):
-        for col in range(1, width - 1):
-            direction = angle[row, col]
-            before = 255.0
-            after = 255.0
+    angle_q = np.zeros_like(angle, dtype=np.uint8)
+    angle_q[(angle >= 22.5) & (angle < 67.5)] = 1
+    angle_q[(angle >= 67.5) & (angle < 112.5)] = 2
+    angle_q[(angle >= 112.5) & (angle < 157.5)] = 3
 
-            if (0 <= direction < 22.5) or (157.5 <= direction <= 180):
-                before = magnitude[row, col - 1]
-                after = magnitude[row, col + 1]
-            elif 22.5 <= direction < 67.5:
-                before = magnitude[row - 1, col + 1]
-                after = magnitude[row + 1, col - 1]
-            elif 67.5 <= direction < 112.5:
-                before = magnitude[row - 1, col]
-                after = magnitude[row + 1, col]
-            elif 112.5 <= direction < 157.5:
-                before = magnitude[row - 1, col - 1]
-                after = magnitude[row + 1, col + 1]
+    mag_pad = np.pad(magnitude, 1, mode='constant', constant_values=0)
+    mag_c = magnitude
+    mag_r = mag_pad[1:-1, 2:]
+    mag_l = mag_pad[1:-1, :-2]
+    mag_ur = mag_pad[:-2, 2:]
+    mag_dl = mag_pad[2:, :-2]
+    mag_u = mag_pad[:-2, 1:-1]
+    mag_d = mag_pad[2:, 1:-1]
+    mag_ul = mag_pad[:-2, :-2]
+    mag_dr = mag_pad[2:, 2:]
 
-            if magnitude[row, col] >= before and magnitude[row, col] >= after:
-                suppressed[row, col] = magnitude[row, col]
+    q0 = angle_q == 0
+    q1 = angle_q == 1
+    q2 = angle_q == 2
+    q3 = angle_q == 3
 
+    keep = (q0 & (mag_c >= mag_r) & (mag_c >= mag_l)) | \
+           (q1 & (mag_c >= mag_ur) & (mag_c >= mag_dl)) | \
+           (q2 & (mag_c >= mag_u) & (mag_c >= mag_d)) | \
+           (q3 & (mag_c >= mag_ul) & (mag_c >= mag_dr))
+
+    suppressed[keep] = magnitude[keep]
     return suppressed
 
 
@@ -92,43 +96,50 @@ def double_threshold(
 
 
 def hysteresis(thresholded: np.ndarray, weak_value: int, strong_value: int) -> np.ndarray:
-    """Giữ lại biên yếu nếu nó nối với vùng biên mạnh."""
-    height, width = thresholded.shape
-    output = thresholded.copy()
-
-    # Kiểm tra vùng lân cận 3x3 quanh từng điểm biên yếu
-    for row in range(1, height - 1):
-        for col in range(1, width - 1):
-            if output[row, col] == weak_value:
-                local_patch = output[row - 1: row + 2, col - 1: col + 2]
-                if np.any(local_patch == strong_value):
-                    output[row, col] = strong_value
-                else:
-                    output[row, col] = 0
-
-    output[output != strong_value] = 0
-    return output.astype(np.uint8)
+    """Giữ lại biên yếu nếu nó nối với vùng biên mạnh (Tối ưu Dilation)."""
+    strong_edges = (thresholded == strong_value).astype(np.uint8)
+    weak_edges = (thresholded == weak_value).astype(np.uint8)
+    
+    kernel = np.ones((3, 3), np.uint8)
+    current_strong = strong_edges
+    while True:
+        dilated = cv2.dilate(current_strong, kernel)
+        new_strong = np.bitwise_and(dilated, weak_edges)
+        new_strong = np.bitwise_or(current_strong, new_strong)
+        if np.array_equal(current_strong, new_strong):
+            break
+        current_strong = new_strong
+        
+    output = np.zeros_like(thresholded, dtype=np.uint8)
+    output[current_strong > 0] = strong_value
+    return output
 
 
 def run_canny_pipeline(
     image_path: Path,
     output_dir: Path | None = None,
     median_kernel: int = 5,
+    defect_mode: str = "bright",
+    k_std: float = 4.0,
+    apply_tophat: bool = False,
+    tophat_kernel: int = 51,
     gaussian_kernel: int = 5,
     sigma: float = 1.4,
     low_ratio: float = 0.05,
     high_ratio: float = 0.15,
-    invert_otsu: bool = False,
     resize_width: int | None = None,
 ) -> dict[str, np.ndarray | float]:
     """Chạy toàn bộ pipeline tiền xử lý và phát hiện biên Canny."""
-    preprocessing = preprocess_image(
-        image_path=image_path,
-        output_dir=output_dir,
+    
+    preprocessor = ImagePreprocessor(
         median_kernel=median_kernel,
-        invert_otsu=invert_otsu,
         resize_width=resize_width,
+        defect_mode=defect_mode,
+        k_std=k_std,
+        apply_tophat=apply_tophat,
+        tophat_kernel=tophat_kernel
     )
+    preprocessing = preprocessor.process(image_path, output_dir)
 
     # Thực hiện các bước chính của Canny
     median_image = preprocessing["median"]
@@ -151,13 +162,49 @@ def run_canny_pipeline(
         "double_threshold": thresholded,
         "canny_edges": edges,
     }
+    
+    # -------------------------------------------------------------
+    # BỔ SUNG LƯỢNG TỬ HÓA GÓC VÀ LỌC CÓ HƯỚNG (Directional Filters)
+    # -------------------------------------------------------------
+    horiz_defect_mask = np.zeros_like(edges)
+    vert_defect_mask = np.zeros_like(edges)
+    diag_defect_mask = np.zeros_like(edges)
+    
+    # Góc Gradient = 90 độ (Gradient dọc) -> Lỗi đường ngang (Horizontal line)
+    is_horiz_defect = (angle >= 67.5) & (angle < 112.5)
+    
+    # Góc Gradient = 0 hoặc 180 độ (Gradient ngang) -> Lỗi đường dọc (Vertical line)
+    is_vert_defect = (angle < 22.5) | (angle >= 157.5)
+    
+    # Góc chéo
+    is_diag_defect = ((angle >= 22.5) & (angle < 67.5)) | ((angle >= 112.5) & (angle < 157.5))
+    
+    # Áp mask lên ảnh Canny Edges
+    horiz_defect_mask[is_horiz_defect & (edges > 0)] = 255
+    vert_defect_mask[is_vert_defect & (edges > 0)] = 255
+    diag_defect_mask[is_diag_defect & (edges > 0)] = 255
+    
+    # Lọc hình thái học có hướng bằng Structuring Element (SE) dạng đoạn thẳng
+    kernel_h = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 1)) # SE Ngang
+    kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 15)) # SE Dọc
+    kernel_d = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)) # SE Chéo
+    
+    # SỬA LỖI BUG: Đổi MORPH_OPEN thành MORPH_CLOSE để nối các viền đứt gãy thay vì xóa chúng
+    filtered_horiz = cv2.morphologyEx(horiz_defect_mask, cv2.MORPH_CLOSE, kernel_h)
+    filtered_vert = cv2.morphologyEx(vert_defect_mask, cv2.MORPH_CLOSE, kernel_v)
+    filtered_diag = cv2.morphologyEx(diag_defect_mask, cv2.MORPH_CLOSE, kernel_d)
+    
+    results["horiz_mask"] = filtered_horiz
+    results["vert_mask"] = filtered_vert
+    results["diag_mask"] = filtered_diag
 
-    # Lưu chuỗi ảnh minh họa từng bước xử lý
     if output_dir is not None:
         save_image(output_dir / "04_gaussian.png", smoothed)
-        save_image(output_dir / "05_gradient_magnitude.png", magnitude.astype(np.uint8))
-        save_image(output_dir / "06_non_maximum_suppression.png", suppressed.astype(np.uint8))
-        save_image(output_dir / "07_double_threshold.png", thresholded)
-        save_image(output_dir / "08_canny_edges.png", edges)
+        save_image(output_dir / "05_magnitude.png", (magnitude / np.max(magnitude) * 255).astype(np.uint8))
+        save_image(output_dir / "06_suppressed.png", suppressed.astype(np.uint8))
+        save_image(output_dir / "07_canny_edges.png", edges)
+        save_image(output_dir / "08a_horiz_lines.png", filtered_horiz)
+        save_image(output_dir / "08b_vert_lines.png", filtered_vert)
+        save_image(output_dir / "08c_diag_lines.png", filtered_diag)
 
     return results

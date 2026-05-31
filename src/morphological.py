@@ -6,9 +6,9 @@ import cv2
 import numpy as np
 
 try:
-    from .preprocessing import preprocess_image, save_image
+    from .preprocessing import ImagePreprocessor, save_image
 except ImportError:
-    from preprocessing import preprocess_image, save_image
+    from preprocessing import ImagePreprocessor, save_image
 
 
 def get_structuring_element(shape: str, size: int) -> np.ndarray:
@@ -39,34 +39,44 @@ def run_morphological_pipeline(
     image_path: Path,
     output_dir: Path | None = None,
     median_kernel: int = 5,
-    invert_otsu: bool = False,
+    defect_mode: str = "both",
+    k_std: float = 2.5,          # Đã giảm từ 4.0 xuống 2.5 để nhạy bén hơn với Stain mờ
+    apply_tophat: bool = True,
+    tophat_kernel: int = 21,     # Đã giảm từ 51 xuống 21 để không bắt lầm vân vải dệt
     resize_width: int | None = None,
-    morph_shape: str = "rect",
-    morph_size: int = 5,
-    iterations: int = 1,
+    morph_shape: str = "ellipse",
+    open_size: int = 3,          # Kernel nhỏ cho Opening (Giữ lại lỗi mờ)
+    close_size: int = 5,         # Kernel lớn cho Closing (Kết dính khối)
+    iterations: int = 3,
 ) -> dict[str, np.ndarray | float]:
-    """Chạy toàn bộ pipeline: Tiền xử lý -> Otsu -> Morphological."""
+    """Chạy toàn bộ pipeline: Tiền xử lý -> Statistical Threshold -> Morphological."""
     
-    preprocessing = preprocess_image(
-        image_path=image_path,
-        output_dir=output_dir,
+    preprocessor = ImagePreprocessor(
         median_kernel=median_kernel,
-        invert_otsu=invert_otsu,
         resize_width=resize_width,
+        defect_mode=defect_mode,
+        k_std=k_std,
+        apply_tophat=apply_tophat,
+        tophat_kernel=tophat_kernel
     )
+    preprocessing = preprocessor.process(image_path, output_dir)
     
-    otsu_binary = preprocessing["otsu_binary"]
-    kernel = get_structuring_element(morph_shape, morph_size)
+    binary_mask = preprocessing["binary_mask"]
     
-    # Chạy Opening để khử nhiễu (Dùng iter = 1 để tránh làm rách thêm viền lỗi)
-    opened_image = apply_opening(otsu_binary, kernel, iterations=1)
+    # Tạo 2 bộ Kernel độc lập cho Mở và Đóng
+    kernel_open = get_structuring_element(morph_shape, open_size)
+    kernel_close = get_structuring_element(morph_shape, close_size)
     
-    # Chạy Closing với số vòng lặp linh hoạt (Cascading) để lấp kín các khe hở lớn
-    closed_image = apply_closing(opened_image, kernel, iterations=iterations)
+    # Mở bằng Kernel nhỏ (xóa rác 1-2 pixel mà không làm mất vết dơ)
+    opened_image = apply_opening(binary_mask, kernel_open, iterations=1)
+    
+    # Đóng bằng Kernel lớn (Nối các mảng dơ đứt đoạn thành một khối Stain hoàn chỉnh)
+    closed_image = apply_closing(opened_image, kernel_close, iterations=iterations)
 
     results: dict[str, np.ndarray | float] = {
         **preprocessing,
-        "morph_kernel": kernel,
+        "morph_kernel_open": kernel_open,
+        "morph_kernel_close": kernel_close,
         "morph_opening": opened_image,
         "morph_closing": closed_image,
     }

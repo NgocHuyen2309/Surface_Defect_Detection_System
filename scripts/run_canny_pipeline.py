@@ -14,6 +14,7 @@ if str(SRC_DIR) not in sys.path:
 
 from canny_edge import run_canny_pipeline
 from preprocessing import find_images
+from feature_extraction import LineFeatureExtractor, FeatureExporter
 
 
 def build_output_dir(image_path: Path, raw_dir: Path, output_dir: Path) -> Path:
@@ -28,11 +29,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", default="data/raw", help="Thư mục dataset đầu vào")
     parser.add_argument("--output", default="data/processed/canny", help="Thư mục lưu kết quả")
     parser.add_argument("--median-kernel", type=int, default=5, help="Kích thước kernel Median")
+    
+    # BỔ SUNG: Tham số cho Cân bằng ánh sáng Top-Hat/Black-Hat
+    parser.add_argument("--apply-tophat", action="store_true", help="Bật Cân bằng ánh sáng TopHat/BlackHat")
+    parser.add_argument("--tophat-kernel", type=int, default=21, help="Kích thước kernel TopHat")
+    
     parser.add_argument("--gaussian-kernel", type=int, default=5, help="Kích thước kernel Gaussian")
     parser.add_argument("--sigma", type=float, default=1.4, help="Độ lệch chuẩn Gaussian")
     parser.add_argument("--low-ratio", type=float, default=0.05, help="Tỷ lệ ngưỡng thấp")
     parser.add_argument("--high-ratio", type=float, default=0.15, help="Tỷ lệ ngưỡng cao")
-    parser.add_argument("--invert-otsu", action="store_true", help="Đảo nền/vật thể khi dùng Otsu")
+    parser.add_argument("--defect-mode", choices=["bright", "dark", "both"], default="both", help="Loại khuyết tật (bright=sáng hơn nền, dark=tối hơn nền, both=cả hai)")
+    parser.add_argument("--k-std", type=float, default=4.0, help="Hệ số K cho Statistical Threshold")
     parser.add_argument("--resize-width", type=int, default=0, help="Resize theo chiều rộng, nhập 0 để bỏ qua")
     parser.add_argument("--limit", type=int, default=0, help="Giới hạn số ảnh chạy thử, nhập 0 để chạy hết")
     return parser
@@ -54,24 +61,46 @@ def main() -> None:
         print("Cấu trúc đề xuất: data/raw/train/<ten_lop>/<anh> và data/raw/test/<ten_lop>/<anh>")
         return
 
+    all_features = []
+
     start_time = perf_counter()
-    print(f"Tìm thấy {len(image_paths)} ảnh. Bắt đầu xử lý...")
+    print(f"Tìm thấy {len(image_paths)} ảnh. Bắt đầu xử lý Canny...")
 
     for index, image_path in enumerate(image_paths, start=1):
         image_output_dir = build_output_dir(image_path, raw_dir, output_dir)
-        run_canny_pipeline(
+        results = run_canny_pipeline(
             image_path=image_path,
             output_dir=image_output_dir,
             median_kernel=args.median_kernel,
+            defect_mode=args.defect_mode,
+            k_std=args.k_std,
+            apply_tophat=args.apply_tophat,      # TRUYỀN THAM SỐ XUỐNG CORE
+            tophat_kernel=args.tophat_kernel,    # TRUYỀN THAM SỐ XUỐNG CORE
             gaussian_kernel=args.gaussian_kernel,
             sigma=args.sigma,
             low_ratio=args.low_ratio,
             high_ratio=args.high_ratio,
-            invert_otsu=args.invert_otsu,
             resize_width=resize_width,
         )
-        relative_path = image_path.relative_to(raw_dir)
-        print(f"[{index}/{len(image_paths)}] {relative_path} -> {image_output_dir}")
+        
+        label = image_path.parent.name
+        extractor = LineFeatureExtractor(
+            results["gray"], 
+            results["horiz_mask"], 
+            results["vert_mask"], 
+            results["diag_mask"]
+        )
+        feature = extractor.compute_features(filename=image_path.name, label=label)
+        all_features.append(feature)
+        
+        extractor.save_overlay(image_output_dir / "09_canny_overlay.png")
+        
+        # In log mỏng hơn (100 ảnh in 1 lần) cho terminal đỡ giật
+        if index % 100 == 0:
+            print(f"[{index}/{len(image_paths)}] Đang xử lý...")
+
+    csv_path = PROJECT_ROOT / "data" / "processed" / "canny_features.csv"
+    FeatureExporter.export_canny_csv(all_features, csv_path)
 
     elapsed = perf_counter() - start_time
     average_time = elapsed / len(image_paths)
