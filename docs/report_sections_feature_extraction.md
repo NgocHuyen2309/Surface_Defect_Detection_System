@@ -4,54 +4,22 @@
 
 Trong bài toán phát hiện khiếm khuyết bề mặt, việc trích xuất được một bộ số liệu đặc trưng (Features) có tính chất **Bất biến (Invariance)** đối với phép xoay, tịnh tiến và thu phóng là điều kiện tiên quyết để mô hình Học máy có thể phân loại tốt. 
 
-Áp dụng phương pháp toán tử **Region Moments** (Slide 6/36 tài liệu học tập), hệ thống trích xuất ba thuộc tính hình học cốt lõi từ ảnh nhị phân:
+Hệ thống được thiết kế theo kiến trúc OOP với 2 bộ Extractor độc lập:
 
-1. **Diện tích (Area):** Dựa trên Raw Moment bậc 0 ($m_{00}$). 
-2. **Chu vi (Perimeter):** Đo lường chiều dài viền khép kín của đối tượng.
-3. **Độ lệch tâm (Eccentricity - $\epsilon$):**
-   Thay vì dùng các thuật toán hộp bao (Bounding Box) có độ chính xác thấp, hệ thống giải phương trình trị riêng (Eigenvalues) của Ma trận Hiệp phương sai (Covariance Matrix) được cấu thành từ các Central Moments ($\mu_{20}, \mu_{02}, \mu_{11}$). 
-   
-   Cụ thể, ma trận hiệp phương sai:
-   $$ \Sigma = \begin{bmatrix} \mu_{20} & \mu_{11} \\ \mu_{11} & \mu_{02} \end{bmatrix} $$
-   
-   Giải lấy hai giá trị riêng $\lambda_1 \ge \lambda_2$. Độ lệch tâm được tính bằng:
-   $$ \epsilon = \sqrt{1 - \frac{\lambda_2}{\lambda_1}} $$
+### 1.1. BlobFeatureExtractor (Cho nhánh Morphological)
+Trích xuất ba thuộc tính hình học khối:
+1. **Diện tích (Area):** Dựa trên Raw Moment bậc 0 ($m_{00}$). Hệ thống tính toán `max_area` để nhận diện khối lỗi lớn nhất, và `total_area` để đo lường mức độ lan rộng của lỗi (như vết ố).
+2. **Chu vi (Perimeter):** Đo lường chiều dài viền khép kín của đối tượng thông qua `cv2.arcLength`.
+3. **Độ lệch tâm (Eccentricity - $\epsilon$):** Tính toán thông qua phương trình trị riêng (Eigenvalues) của Ma trận Hiệp phương sai từ các Central Moments ($\mu_{20}, \mu_{02}, \mu_{11}$). Giá trị $\epsilon \rightarrow 0$ đặc trưng cho lỗi tròn (hole), $\epsilon \rightarrow 1$ đặc trưng cho lỗi xước kéo dài.
 
-   > Giá trị $\epsilon \rightarrow 0$ đặc trưng cho các khiếm khuyết dạng đa giác đều hoặc tròn (như lỗ thủng/hole). Giá trị $\epsilon \rightarrow 1$ đặc trưng cho các khiếm khuyết dạng sợi mảnh, kéo dài (như vết xước/lines).
+### 1.2. LineFeatureExtractor (Cho nhánh Canny Edge)
+Nhánh này tập trung đo lường cường độ đứt gãy tuyến tính. Sau khi Canny lượng tử hóa góc Gradient thành các mask Ngang, Dọc, Chéo, bộ trích xuất sẽ tính tổng số lượng pixel biên khuyết tật (Non-zero pixels) trên từng hướng, sinh ra bộ đặc trưng: `horiz_length`, `vert_length`, `diag_length`.
 
-## 2. Kiến trúc luồng dữ liệu (Dataflow)
+## 2. Phân tích thực nghiệm định lượng từ file CSV
 
-Quá trình trích xuất đặc trưng được mô hình hóa theo sơ đồ hướng đối tượng sau:
+Sau quá trình quét (Batch Processing) trên toàn bộ tập dữ liệu, hai file `morph_features.csv` và `canny_features.csv` đã bộc lộ rõ hiệu năng của từng phương pháp:
 
-```mermaid
-graph TD
-    A[Ảnh Gốc & Ảnh Nhị phân] -->|Input| B(RegionFeatureExtractor)
-    
-    subgraph OOP_Pipeline[Lớp Trích Xuất Đặc Trưng]
-        B -->|cv2.findContours| C[Lọc nhiễu & Tìm viền biên]
-        C -->|cv2.moments| D[Lập ma trận Central Moments]
-        D -->|Tính Toán Invariants| E[Giải Eigenvalues]
-    end
-    
-    E -->|Area, Perimeter, Eccentricity| F[Vẽ Overlay Bounding Box]
-    E -->|Area, Perimeter, Eccentricity| G[Lưu mảng Features Dictionary]
-    
-    F --> H(Ảnh Output Minh Họa)
-    G --> I(FeatureExporter)
-    
-    I -->|Append Row| J[(data/processed/features.csv)]
-```
+- **Morphological Pipeline (Thành công rực rỡ):** Bộ lọc Hình thái học kết hợp Cân bằng ánh sáng Top-Hat/Black-Hat đã triệt tiêu hoàn toàn nhiễu vân vải. Với các ảnh `defect_free` (không lỗi), giá trị `max_area` trả về xấp xỉ 0. Với các ảnh chứa `hole` hoặc `stain`, diện tích bắt được rất lớn và chuẩn xác. Đây là bộ dữ liệu vàng, cực kỳ nhiễu thấp (Low Noise) cho mô hình Machine Learning.
+- **Canny Edge Pipeline (Bị áp đảo bởi kết cấu vải):** Mặc dù đã dùng các phép đóng có hướng (Directional Closing) để hàn gắn đường xước, thuật toán Canny vẫn bắt nhầm kết cấu đan chéo của sợi vải (Fabric Weave Texture) làm viền biên. Hậu quả là ở các ảnh vải lành lặn, độ dài đứt gãy vẫn cao, sinh ra lượng Báo động giả (False Positives) lớn. 
 
-## 3. Phân tích thực nghiệm: Sự đứt gãy của Canny Edge so với Morphological
-
-Trong quá trình chạy thực nghiệm song song bộ trích xuất đặc trưng trên cả 2 nhánh thuật toán truyền thống (qua kịch bản kiểm thử trực tiếp trên dataset thật), một vấn đề học thuật mang tính bản chất Computer Vision đã được thực chứng:
-
-- **Morphological Pipeline:** 
-  Tạo ra các vùng khối đặc (Solid Blobs) do đặc tính của phép Closing lấp đầy khoảng trống. Nhờ đó, hàm rút trích tính toán được chính xác diện tích nội tại và độ lệch tâm không gian, tìm thấy đầy đủ các vùng lỗi với thông số diện tích (Area) rất lớn (hàng chục đến hàng trăm pixel).
-
-- **Canny Edge Pipeline:** 
-  Gần như **thất bại** trong việc trích xuất hình học (tìm thấy `0` vùng lỗi với ngưỡng nhiễu `min_area = 50`). 
-  - *Nguyên nhân cốt lõi:* Canny chỉ phát hiện được các điểm ảnh biến thiên cường độ cục bộ (đường biên 1-pixel). Nếu đường biên không khép kín hoàn hảo, hàm trích xuất sẽ xem tập hợp điểm này chỉ là một đường gấp khúc mở (polyline), dẫn đến diện tích nội tại `Area` tính toán xấp xỉ bằng `0`.
-
-**Kết luận thực nghiệm:**
-Thực nghiệm này chứng minh kiến trúc song song phân luồng của dự án là thiết kế mang tính bắt buộc. Nhánh Canny có thể cung cấp góc nhìn trực quan về biên độ sắc nét của lỗi trên giao diện UI, nhưng nhánh **Morphological Processing mới là xương sống** chịu trách nhiệm cung cấp dữ liệu hình học bất biến vững chắc để mồi cho các Model Machine Learning (SVM/Random Forest) thực thi suy luận phía sau.
+**Kết luận thực nghiệm:** Việc thiết lập 2 luồng A/B Testing đã mang lại minh chứng khoa học đắt giá. Trên nền vật liệu có kết cấu đan xen như vải dệt, thuật toán Hình thái học (Morphological) thể hiện sự ưu việt tuyệt đối so với các toán tử dò biên Gradient cục bộ (Canny).

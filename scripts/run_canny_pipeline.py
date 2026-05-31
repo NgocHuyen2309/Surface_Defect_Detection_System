@@ -29,6 +29,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--input", default="data/raw", help="Thư mục dataset đầu vào")
     parser.add_argument("--output", default="data/processed/canny", help="Thư mục lưu kết quả")
     parser.add_argument("--median-kernel", type=int, default=5, help="Kích thước kernel Median")
+    
+    # BỔ SUNG: Tham số cho Cân bằng ánh sáng Top-Hat/Black-Hat
+    parser.add_argument("--apply-tophat", action="store_true", help="Bật Cân bằng ánh sáng TopHat/BlackHat")
+    parser.add_argument("--tophat-kernel", type=int, default=21, help="Kích thước kernel TopHat")
+    
     parser.add_argument("--gaussian-kernel", type=int, default=5, help="Kích thước kernel Gaussian")
     parser.add_argument("--sigma", type=float, default=1.4, help="Độ lệch chuẩn Gaussian")
     parser.add_argument("--low-ratio", type=float, default=0.05, help="Tỷ lệ ngưỡng thấp")
@@ -59,7 +64,7 @@ def main() -> None:
     all_features = []
 
     start_time = perf_counter()
-    print(f"Tìm thấy {len(image_paths)} ảnh. Bắt đầu xử lý...")
+    print(f"Tìm thấy {len(image_paths)} ảnh. Bắt đầu xử lý Canny...")
 
     for index, image_path in enumerate(image_paths, start=1):
         image_output_dir = build_output_dir(image_path, raw_dir, output_dir)
@@ -69,6 +74,8 @@ def main() -> None:
             median_kernel=args.median_kernel,
             defect_mode=args.defect_mode,
             k_std=args.k_std,
+            apply_tophat=args.apply_tophat,      # TRUYỀN THAM SỐ XUỐNG CORE
+            tophat_kernel=args.tophat_kernel,    # TRUYỀN THAM SỐ XUỐNG CORE
             gaussian_kernel=args.gaussian_kernel,
             sigma=args.sigma,
             low_ratio=args.low_ratio,
@@ -88,8 +95,9 @@ def main() -> None:
         
         extractor.save_overlay(image_output_dir / "09_canny_overlay.png")
         
-        relative_path = image_path.relative_to(raw_dir)
-        print(f"[{index}/{len(image_paths)}] {relative_path} -> {image_output_dir}")
+        # In log mỏng hơn (100 ảnh in 1 lần) cho terminal đỡ giật
+        if index % 100 == 0:
+            print(f"[{index}/{len(image_paths)}] Đang xử lý...")
 
     csv_path = PROJECT_ROOT / "data" / "processed" / "canny_features.csv"
     FeatureExporter.export_canny_csv(all_features, csv_path)

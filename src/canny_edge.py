@@ -189,9 +189,10 @@ def run_canny_pipeline(
     kernel_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 15)) # SE Dọc
     kernel_d = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)) # SE Chéo
     
-    filtered_horiz = cv2.morphologyEx(horiz_defect_mask, cv2.MORPH_OPEN, kernel_h)
-    filtered_vert = cv2.morphologyEx(vert_defect_mask, cv2.MORPH_OPEN, kernel_v)
-    filtered_diag = cv2.morphologyEx(diag_defect_mask, cv2.MORPH_OPEN, kernel_d)
+    # SỬA LỖI BUG: Đổi MORPH_OPEN thành MORPH_CLOSE để nối các viền đứt gãy thay vì xóa chúng
+    filtered_horiz = cv2.morphologyEx(horiz_defect_mask, cv2.MORPH_CLOSE, kernel_h)
+    filtered_vert = cv2.morphologyEx(vert_defect_mask, cv2.MORPH_CLOSE, kernel_v)
+    filtered_diag = cv2.morphologyEx(diag_defect_mask, cv2.MORPH_CLOSE, kernel_d)
     
     results["horiz_mask"] = filtered_horiz
     results["vert_mask"] = filtered_vert

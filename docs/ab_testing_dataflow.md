@@ -5,69 +5,63 @@
 ```mermaid
 graph TD
     %% Input Layer
-    Input["Raw Fabric Image"] --> Preprocess["Preprocessing Module"]
+    Input["Raw Fabric Image"] --> Gray["Grayscale Conversion"]
     
     %% Preprocessing
-    subgraph S1 ["Tiền Xử Lý Chung"]
-        Preprocess --> Gray["Grayscale Conversion"]
-        Gray --> Median["Median Filter"]
-        Median --> TopHat["Top-Hat / Black-Hat Transform<br>Cân bằng ánh sáng dệt"]
+    subgraph S1 ["Tiền Xử Lý Chung (OOP)"]
+        Gray --> Median["Median Filter (Khử nhiễu)"]
+        Median --> TopHat["Illumination Correction<br>TopHat + BlackHat"]
+        TopHat --> StatThresh["Statistical Thresholding<br>(Mean ± k*Std)"]
     end
 
     %% Split into two branches
-    TopHat --> BranchA{"Nhánh A: Morphological"}
-    TopHat --> BranchB{"Nhánh B: Canny Edge"}
+    StatThresh -->|Mask Nhị Phân| BranchA{"Nhánh A:<br>Morphological"}
+    Median -->|Ảnh Xám Median| BranchB{"Nhánh B:<br>Canny Edge"}
 
     %% Branch A: Morphological
     subgraph S2 ["Nhánh A: Hình thái khối (Blobs)"]
-        BranchA --> Otsu["Otsu / Statistical Binarization"]
-        Otsu --> MorphOp["Morphological Operations"]
-        MorphOp --> Opening("Opening: Tẩy đốm nhiễu / Tách Stain")
-        MorphOp --> Closing("Closing: Vá lỗ thủng / Lấp Hole")
-        Opening --> ExtractA["Trích xuất Đặc trưng Khối"]
-        Closing --> ExtractA
-        ExtractA --> FeatA("Max Area, Perimeter, Eccentricity")
-        FeatA --> CSV_A[("morph_features.csv")]
+        BranchA --> MorphOp["Morphological Operations"]
+        MorphOp --> Opening("Opening (K:3x3): Tẩy đốm nhiễu")
+        Opening --> Closing("Cascading Closing (K:5x5): Lấp khối lỗi")
+        Closing --> ExtractA["Blob Feature Extractor"]
+        ExtractA --> FeatA("Max/Total Area,<br>Min Eccentricity")
     end
 
     %% Branch B: Canny Edge
     subgraph S3 ["Nhánh B: Cấu trúc Tuyến tính (Lines)"]
         BranchB --> Canny["Canny Edge Detection"]
-        Canny --> Gradient["Calculate Gradient Angle"]
+        Canny --> Gradient["Sobel Gradient & NMS"]
         Gradient --> SplitAngle{"Lượng tử hóa Hướng"}
-        SplitAngle --> HorizMask["Horizontal Mask 0°"]
-        SplitAngle --> VertMask["Vertical Mask 90°"]
-        HorizMask --> DirFilterH["Directional Morph<br>SE Line 1x15"]
-        VertMask --> DirFilterV["Directional Morph<br>SE Line 15x1"]
-        DirFilterH --> ExtractB["Trích xuất Độ dài Tuyến tính"]
+        SplitAngle --> DirFilterH["Horizontal Mask<br>& Directional Closing"]
+        SplitAngle --> DirFilterV["Vertical Mask<br>& Directional Closing"]
+        DirFilterH --> ExtractB["Line Feature Extractor"]
         DirFilterV --> ExtractB
-        ExtractB --> FeatB("Horiz_Length, Vert_Length")
-        FeatB --> CSV_B[("canny_features.csv")]
+        ExtractB --> FeatB("Horiz_Length, Vert_Length,<br>Diag_Length")
     end
+
+    %% CSV Data Output (Bridges)
+    FeatA --> CSV_A[("morph_features.csv")]
+    FeatB --> CSV_B[("canny_features.csv")]
 
     %% Machine Learning Phase
-    CSV_A --> ML_A["Machine Learning Lab A"]
-    CSV_B --> ML_B["Machine Learning Lab B"]
-
     subgraph S4 ["Huấn luyện & Đánh giá (A/B Testing)"]
+        CSV_A --> ML_A["Machine Learning Lab A"]
+        CSV_B --> ML_B["Machine Learning Lab B"]
         ML_A --> TrainA("Train SVM / Random Forest")
         ML_B --> TrainB("Train SVM / Random Forest")
-        
-        TrainA --> EvalA["Đánh giá mạnh: Lỗi Hole/Stain"]
-        TrainB --> EvalB["Đánh giá mạnh: Lỗi Horizontal/Vertical"]
-        
-        EvalA --> Compare{"So Sánh Chéo Hiệu Năng<br>Confusion Matrix"}
-        EvalB --> Compare
-        Compare --> Report["Báo Cáo Đồ Án Cuối Kỳ"]
+        TrainA --> EvalA["Phân tích Hiệu năng<br>(Confusion Matrix)"]
+        TrainB --> EvalA
     end
+
+    EvalA --> Report["Kết luận: Morphological ưu việt trên nền vải dệt"]
     
     %% Styling
     classDef branchA fill:#d4edda,stroke:#28a745,stroke-width:2px;
     classDef branchB fill:#cce5ff,stroke:#007bff,stroke-width:2px;
     classDef mlPhase fill:#fff3cd,stroke:#ffc107,stroke-width:2px;
     
-    class BranchA,CSV_A,ExtractA branchA;
-    class BranchB,CSV_B,ExtractB branchB;
+    class BranchA,CSV_A,ExtractA,FeatA branchA;
+    class BranchB,CSV_B,ExtractB,FeatB branchB;
     class ML_A,ML_B,TrainA,TrainB mlPhase;
 ```
 
