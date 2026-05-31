@@ -1,0 +1,6 @@
+{
+    "best_pipeline": "canny",
+    "selection_metric": "f1_macro",
+    "best_model_source": "models\\rf_canny_model.pkl",
+    "exported_as": "models\\rf_model.pkl"
+}
