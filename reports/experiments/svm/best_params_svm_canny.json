@@ -1,0 +1,5 @@
+{
+    "svm__C": 100,
+    "svm__gamma": "scale",
+    "svm__kernel": "rbf"
+}
