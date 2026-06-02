@@ -1,3 +1,3 @@
-﻿pipeline,model,train_samples,test_samples,train_accuracy,test_accuracy,accuracy_gap,precision_macro,recall_macro,f1_macro,precision_weighted,recall_weighted,f1_weighted,model_path,best_params
-morphological,Random Forest,1941,489,0.8145285935085008,0.6196319018404908,0.19489669166801005,0.4422659278769432,0.4277709052338672,0.41618149979468383,0.686164274776233,0.6196319018404908,0.6380022314548306,models\rf_morphological_model.pkl,"{""classifier__max_depth"": 10, ""classifier__max_features"": ""sqrt"", ""classifier__min_samples_leaf"": 1, ""classifier__n_estimators"": 200}"
-canny,Random Forest,1941,489,1.0,0.8282208588957055,0.17177914110429449,0.6682955553923295,0.5617243653087912,0.5989108050971855,0.8300259524284856,0.8282208588957055,0.8269939533744183,models\rf_canny_model.pkl,"{""classifier__max_depth"": null, ""classifier__max_features"": ""sqrt"", ""classifier__min_samples_leaf"": 1, ""classifier__n_estimators"": 200}"
+﻿pipeline,custom_score,f1_weighted,accuracy,f1_macro,model_path
+morphological,0.5606561188583792,0.4127647313323621,0.3658280922431866,0.2772430950492453,models\rf_morphological_model.pkl
+canny,0.5086357812152409,0.5581076254032438,0.5118679050567595,0.3205275977754297,models\rf_canny_model.pkl

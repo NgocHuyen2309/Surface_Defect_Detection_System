@@ -1,0 +1,3 @@
+pipeline,f1_weighted,accuracy,model_path
+morphological,0.5635485499288497,0.4937106918238994,models\svm_morphological_model.pkl
+canny,0.4338069536018712,0.40763673890608876,models\svm_canny_model.pkl
