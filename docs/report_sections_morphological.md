@@ -1,6 +1,6 @@
 ## 3.3. Nhánh Khối - Bộ lọc Toán học Hình thái học (Morphological Processing)
 
-Bên cạnh nhánh Canny tập trung vào đường biên, hệ thống thiết kế nhánh rẽ thứ hai áp dụng các toán tử Hình thái học (Morphological) để giải quyết bài toán phát hiện lỗi dạng đốm/khối.
+Bên cạnh nhánh Directional Gradient tập trung vào đường biên, hệ thống thiết kế nhánh rẽ thứ hai áp dụng các toán tử Hình thái học (Morphological) để giải quyết bài toán phát hiện lỗi dạng đốm/khối.
 
 **Cân bằng Ánh sáng và Ngưỡng Thống kê (Illumination Correction & Statistical Thresholding):**
 Bề mặt vải dệt thực tế thường có độ rọi sáng không đồng đều. Để khắc phục, hệ thống áp dụng kỹ thuật Cân bằng ánh sáng kép: Dùng `Top-Hat` để đẩy nổi các lỗi sáng (hole) và `Black-Hat` để đẩy nổi lỗi tối (stain), sau đó kết hợp lại. Nhờ đó, phông nền vải bị ép về giá trị tối tĩnh, cho phép sử dụng Ngưỡng Thống kê động ($T = \mu \pm k\sigma$) với $k = 2.5$ để bóc tách chính xác ngay cả những vết ố mờ nhất.

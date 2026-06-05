@@ -12,7 +12,7 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from canny_edge import run_canny_pipeline
+from directional_gradient import run_directional_gradient_pipeline
 from preprocessing import find_images
 from feature_extraction import LineFeatureExtractor, FeatureExporter
 
@@ -25,9 +25,9 @@ def build_output_dir(image_path: Path, raw_dir: Path, output_dir: Path) -> Path:
 
 def build_parser() -> argparse.ArgumentParser:
     """Khai báo các tham số dòng lệnh."""
-    parser = argparse.ArgumentParser(description="Chạy pipeline tiền xử lý và Canny")
+    parser = argparse.ArgumentParser(description="Chạy pipeline tiền xử lý và Directional Gradient")
     parser.add_argument("--input", default="data/raw", help="Thư mục dataset đầu vào")
-    parser.add_argument("--output", default="data/processed/canny", help="Thư mục lưu kết quả")
+    parser.add_argument("--output", default="data/processed/directional", help="Thư mục lưu kết quả")
     parser.add_argument("--median-kernel", type=int, default=5, help="Kích thước kernel Median")
     
     # BỔ SUNG: Tham số cho Cân bằng ánh sáng Top-Hat/Black-Hat
@@ -64,23 +64,19 @@ def main() -> None:
     all_features = []
 
     start_time = perf_counter()
-    print(f"Tìm thấy {len(image_paths)} ảnh. Bắt đầu xử lý Canny...")
+    print(f"Tìm thấy {len(image_paths)} ảnh. Bắt đầu xử lý Directional Gradient...")
 
     for index, image_path in enumerate(image_paths, start=1):
         image_output_dir = build_output_dir(image_path, raw_dir, output_dir)
-        results = run_canny_pipeline(
+        # 1. Chạy luồng Gradient có hướng
+        results = run_directional_gradient_pipeline(
             image_path=image_path,
             output_dir=image_output_dir,
-            median_kernel=args.median_kernel,
-            defect_mode=args.defect_mode,
-            k_std=args.k_std,
-            apply_tophat=args.apply_tophat,      # TRUYỀN THAM SỐ XUỐNG CORE
-            tophat_kernel=args.tophat_kernel,    # TRUYỀN THAM SỐ XUỐNG CORE
-            gaussian_kernel=args.gaussian_kernel,
-            sigma=args.sigma,
-            low_ratio=args.low_ratio,
-            high_ratio=args.high_ratio,
+            median_ksize=args.median_kernel,
+            apply_tophat=args.apply_tophat,
+            tophat_ksize=args.tophat_kernel,
             resize_width=resize_width,
+            k_std=args.k_std,
         )
         
         label = image_path.parent.name
@@ -93,14 +89,14 @@ def main() -> None:
         feature = extractor.compute_features(filename=image_path.name, label=label)
         all_features.append(feature)
         
-        extractor.save_overlay(image_output_dir / "09_canny_overlay.png")
+        extractor.save_overlay(image_output_dir / "09_directional_overlay.png")
         
         # In log mỏng hơn (100 ảnh in 1 lần) cho terminal đỡ giật
         if index % 100 == 0:
             print(f"[{index}/{len(image_paths)}] Đang xử lý...")
 
-    csv_path = PROJECT_ROOT / "data" / "processed" / "canny_features.csv"
-    FeatureExporter.export_canny_csv(all_features, csv_path)
+    csv_path = PROJECT_ROOT / "data" / "processed" / "directional_features.csv"
+    FeatureExporter.export_directional_csv(all_features, csv_path)
 
     elapsed = perf_counter() - start_time
     average_time = elapsed / len(image_paths)

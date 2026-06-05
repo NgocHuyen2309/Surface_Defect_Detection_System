@@ -228,3 +228,12 @@ data/processed/*
 # --- OS ---
 .DS_Store
 Thumbs.db
+# --- Backend & Frontend Environment ---
+**/.env
+.env.*
+
+# --- Backend Uploads & Debug Images ---
+app/backend/uploads/*
+/*.jpg
+/*.png
+/*.jpeg

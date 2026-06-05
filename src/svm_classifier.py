@@ -25,7 +25,7 @@ from sklearn.svm import SVC
 from sklearn.pipeline import Pipeline
 
 MORPH_FEATURES = ["max_area", "total_area", "max_perimeter", "min_eccentricity"]
-CANNY_FEATURES = ["horiz_length", "vert_length", "diag_length"]
+DIRECTIONAL_FEATURES = ["horiz_length", "vert_length", "diag_length"]
 
 
 def load_features(csv_path: Path, feature_cols: list[str]) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
@@ -50,7 +50,7 @@ def build_svm_pipeline(random_state: int) -> Pipeline:
     return Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("scaler", StandardScaler()),
-        ("svm", SVC(random_state=random_state, class_weight="balanced"))
+        ("svm", SVC(random_state=random_state, class_weight="balanced", probability=True))
     ])
 
 
@@ -64,7 +64,8 @@ def tune_svm(x_train: pd.DataFrame, y_train: pd.Series, random_state: int, fast_
     min_class_count = int(y_train.value_counts().min())
     cv = StratifiedKFold(n_splits=min(5, max(2, min_class_count)), shuffle=True, random_state=random_state)
     
-    grid_search = GridSearchCV(pipeline, param_grid, scoring="f1_weighted", cv=cv, n_jobs=-1) # SỬA THÀNH f1_weighted
+    # Sửa scoring thành f1_macro để đồng bộ chuẩn công nghiệp với Random Forest
+    grid_search = GridSearchCV(pipeline, param_grid, scoring="f1_macro", cv=cv, n_jobs=-1, verbose=3)
     grid_search.fit(x_train, y_train)
     return grid_search.best_estimator_, grid_search.best_params_
 
@@ -129,7 +130,8 @@ def run_branch_experiment(pipeline_name: str, csv_path: Path, feature_cols: list
 
     return {
         "pipeline": pipeline_name,
-        "f1_weighted": f1_score(y_test, y_test_pred, average="weighted", zero_division=0), # SỬA TẠI ĐÂY
+        "f1_macro": f1_score(y_test, y_test_pred, average="macro", zero_division=0), # BỔ SUNG ĐO ĐẠC F1-MACRO
+        "f1_weighted": f1_score(y_test, y_test_pred, average="weighted", zero_division=0), 
         "accuracy": accuracy_score(y_test, y_test_pred),
         "model_path": str(model_path)
     }
@@ -147,16 +149,22 @@ def main():
     results = []
     if (morph_csv := Path("data/processed/morph_features.csv")).exists():
         results.append(run_branch_experiment("morphological", morph_csv, MORPH_FEATURES, args.manifest, output_dir, models_dir, args.fast_grid))
-    if (canny_csv := Path("data/processed/canny_features.csv")).exists():
-        results.append(run_branch_experiment("canny", canny_csv, CANNY_FEATURES, args.manifest, output_dir, models_dir, args.fast_grid))
+    if (directional_csv := Path("data/processed/directional_features.csv")).exists():
+        results.append(run_branch_experiment("directional", directional_csv, DIRECTIONAL_FEATURES, args.manifest, output_dir, models_dir, args.fast_grid))
 
     if results:
         summary_df = pd.DataFrame(results)
         summary_df.to_csv(output_dir / "svm_metrics_summary.csv", index=False)
-        best_row = summary_df.sort_values("f1_weighted", ascending=False).iloc[0]
+        
+        # Chọn mô hình tốt nhất dựa trên F1-Macro
+        best_row = summary_df.sort_values("f1_macro", ascending=False).iloc[0]
         shutil.copy2(best_row["model_path"], models_dir / "svm_model.pkl")
+        
         print("\n=== SVM Experimental Summary ===")
-        print(summary_df[["pipeline", "f1_weighted", "accuracy"]])
+        # In ra Terminal đầy đủ các cột đo đạc
+        display_cols = ["pipeline", "f1_macro", "f1_weighted", "accuracy"]
+        print(summary_df[display_cols].to_string(index=False))
+        
         print(f"\nBest Model: {best_row['pipeline'].upper()} (Saved as svm_model.pkl)")
 
 

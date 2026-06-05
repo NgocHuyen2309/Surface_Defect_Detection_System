@@ -1,6 +1,6 @@
 # Sơ đồ Luồng dữ liệu (Dataflow) - A/B Testing
 
-Đây là sơ đồ kiến trúc hệ thống phản ánh chiến lược tách biệt 2 luồng xử lý (Morphological và Canny Edge) để phục vụ cho việc huấn luyện Machine Learning và so sánh chéo hiệu năng phát hiện lỗi bề mặt vải.
+Đây là sơ đồ kiến trúc hệ thống phản ánh chiến lược tách biệt 2 luồng xử lý (Morphological và Directional Gradient) để phục vụ cho việc huấn luyện Machine Learning và so sánh chéo hiệu năng phát hiện lỗi bề mặt vải.
 
 ```mermaid
 graph TD
@@ -16,7 +16,7 @@ graph TD
 
     %% Split into two branches
     StatThresh -->|Mask Nhị Phân| BranchA{"Nhánh A:<br>Morphological"}
-    Median -->|Ảnh Xám Median| BranchB{"Nhánh B:<br>Canny Edge"}
+    Median -->|Ảnh Xám Median| BranchB{"Nhánh B:<br>Directional Gradient"}
 
     %% Branch A: Morphological
     subgraph S2 ["Nhánh A: Hình thái khối (Blobs)"]
@@ -27,11 +27,12 @@ graph TD
         ExtractA --> FeatA("Max/Total Area,<br>Min Eccentricity")
     end
 
-    %% Branch B: Canny Edge
+    %% Branch B: Gradient Magnitude
     subgraph S3 ["Nhánh B: Cấu trúc Tuyến tính (Lines)"]
-        BranchB --> Canny["Canny Edge Detection"]
-        Canny --> Gradient["Sobel Gradient & NMS"]
-        Gradient --> SplitAngle{"Lượng tử hóa Hướng"}
+        BranchB --> Gradient["Gaussian Smoothing & Sobel Gradient"]
+        Gradient --> StatThreshB["Statistical Thresholding<br>(Mean + k*Std)"]
+        StatThreshB --> MorphOpenB("Morphological Opening<br>(Lọc đốm nhiễu)")
+        MorphOpenB --> SplitAngle{"Lượng tử hóa Hướng"}
         SplitAngle --> DirFilterH["Horizontal Mask<br>& Directional Closing"]
         SplitAngle --> DirFilterV["Vertical Mask<br>& Directional Closing"]
         DirFilterH --> ExtractB["Line Feature Extractor"]
@@ -41,7 +42,7 @@ graph TD
 
     %% CSV Data Output (Bridges)
     FeatA --> CSV_A[("morph_features.csv")]
-    FeatB --> CSV_B[("canny_features.csv")]
+    FeatB --> CSV_B[("directional_features.csv")]
 
     %% Machine Learning Phase
     subgraph S4 ["Huấn luyện & Đánh giá (A/B Testing)"]
@@ -69,5 +70,5 @@ graph TD
 
 1. **Tiền xử lý chung:** Toàn bộ ảnh sẽ đi qua bộ lọc Trung vị (khử hạt) và phép biến đổi Top-Hat/Black-Hat để triệt tiêu hoàn toàn sự thiếu đồng đều của ánh sáng trên bề mặt vải.
 2. **Nhánh A (Bên Trái):** Chuyên trách các lỗi dạng Đốm/Khối. Áp dụng Morphological (Opening/Closing) để lấp lỗ và tính toán Diện tích (Area), Chu vi (Perimeter). Đầu ra lưu vào tập dữ liệu riêng biệt `morph_features.csv`.
-3. **Nhánh B (Bên Phải):** Chuyên trách các lỗi Xước/Đứt sợi. Sử dụng góc Gradient từ Canny để tách các dải pixel nằm ngang/dọc, sau đó dùng Lọc hình thái học có hướng (Line SE) để loại bỏ nhiễu. Đầu ra đếm số pixel đứt gãy lưu vào `canny_features.csv`.
+3. **Nhánh B (Bên Phải):** Chuyên trách các lỗi Xước/Đứt sợi. Thay thế Directional Gradient cũ bằng luồng Gradient Magnitude. Dùng đạo hàm Sobel kết hợp Ngưỡng thống kê để bắt lỗi tuyến tính. Sau đó dùng Lọc hình thái học có hướng (Directional Morphological) để nối liền vệt đứt gãy. Đầu ra đếm số pixel đứt gãy lưu vào `directional_features.csv`.
 4. **Machine Learning:** Đưa 2 tập dữ liệu này vào huấn luyện độc lập. Cuối cùng, sinh ra 2 Ma trận nhầm lẫn (Confusion Matrix) để bảo vệ luận điểm khoa học trước hội đồng: Nhánh nào tối ưu cho loại khuyết tật nào.

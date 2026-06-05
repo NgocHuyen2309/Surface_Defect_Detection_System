@@ -1,3 +1,3 @@
-pipeline,f1_weighted,accuracy,model_path
-morphological,0.5635485499288497,0.4937106918238994,models\svm_morphological_model.pkl
-canny,0.4338069536018712,0.40763673890608876,models\svm_canny_model.pkl
+pipeline,f1_macro,f1_weighted,accuracy,model_path
+morphological,0.43437130029540677,0.6464475101077166,0.5971830985915493,models\svm_morphological_model.pkl
+directional,0.588720077192887,0.7952196089950512,0.7830985915492957,models\svm_directional_model.pkl

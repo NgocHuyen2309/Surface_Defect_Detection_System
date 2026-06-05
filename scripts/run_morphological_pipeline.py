@@ -28,7 +28,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--median-kernel", type=int, default=7, help="Kích thước kernel Median")
     parser.add_argument("--tophat-kernel", type=int, default=21, help="Kích thước kernel TopHat")
     parser.add_argument("--defect-mode", choices=["bright", "dark", "both"], default="both", help="Loại khuyết tật")
-    parser.add_argument("--k-std", type=float, default=2.5, help="Hệ số K cho Statistical Threshold")
+    parser.add_argument("--k-std", type=float, default=4.0, help="Hệ số K cho Statistical Threshold")
     parser.add_argument("--morph-shape", choices=["rect", "cross", "ellipse"], default="ellipse", help="Hình dáng Kernel")
     parser.add_argument("--open-size", type=int, default=3, help="Kích thước Kernel cho Phép Mở")
     parser.add_argument("--close-size", type=int, default=5, help="Kích thước Kernel cho Phép Đóng")
