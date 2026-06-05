@@ -6,7 +6,7 @@ import { motion } from 'framer-motion';
 import axios from 'axios';
 
 // The Backend base URL (assuming user runs Node.js on port 3000 locally)
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://fabric-ai-proxy.eastasia.cloudapp.azure.com';
 
 export default function LiveInspection() {
   const [pipeline, setPipeline] = useState('morphological');

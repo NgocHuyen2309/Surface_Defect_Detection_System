@@ -40,7 +40,7 @@ def run_morphological_pipeline(
     output_dir: Path | None = None,
     median_kernel: int = 5,
     defect_mode: str = "both",
-    k_std: float = 4.0,          # Trả lại k_std=4.0 giống Directional để tránh nhiễu vân vải
+    k_std: float = 3.5,          # Trả lại k_std=3.5 giống Directional để tránh nhiễu vân vải
     apply_tophat: bool = True,
     tophat_kernel: int = 21,     # Đã giảm từ 51 xuống 21 để không bắt lầm vân vải dệt
     resize_width: int | None = None,

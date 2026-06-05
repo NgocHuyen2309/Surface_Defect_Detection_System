@@ -17,7 +17,7 @@ const PORT = process.env.PORT || 3000;
 const allowedOrigins = [
   'http://localhost:3000', 
   'http://localhost:5173',
-  'https://stgtdplatform.zxx.web.core.windows.net' // Placeholder for Azure Blob Storage
+  'https://fabricfrontend2309.z7.web.core.windows.net'
 ];
 
 app.use(cors({

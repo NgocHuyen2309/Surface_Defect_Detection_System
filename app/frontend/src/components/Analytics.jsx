@@ -6,7 +6,7 @@ import {
 import { Zap, Target, Award, Activity } from 'lucide-react';
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://fabric-ai-proxy.eastasia.cloudapp.azure.com';
 
 export default function Analytics() {
   const [history, setHistory] = useState([]);
