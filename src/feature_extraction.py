@@ -32,6 +32,17 @@ class BlobFeatureExtractor:
         self.contours = tuple(c for c in contours if cv2.contourArea(c) >= min_area)
         
     def compute_features(self, filename: str, label: str) -> dict[str, Any]:
+        if not self.contours:
+            self.feature_dict = {
+                "filename": filename,
+                "label": label,
+                "max_area": 0.0,
+                "total_area": 0.0,
+                "max_perimeter": 0.0,
+                "min_eccentricity": 0.0
+            }
+            return self.feature_dict
+            
         total_area = 0.0
         max_area = 0.0
         max_perimeter = 0.0

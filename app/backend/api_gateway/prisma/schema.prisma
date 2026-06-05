@@ -1,0 +1,19 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model PredictionHistory {
+  id                 String   @id @default(uuid())
+  original_image_url String
+  overlay_image_url  String
+  pipeline_used      String
+  defect_type        String
+  confidence_score   Float
+  inference_time_ms  Int
+  created_at         DateTime @default(now())
+}

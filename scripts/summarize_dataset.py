@@ -89,7 +89,7 @@ def write_markdown(
         f"- Tổng số ảnh: **{total}**",
         "- Tỷ lệ chia mặc định: **train 80% / test 20%**",
         "- Thư mục đầu vào: `data/raw/`",
-        "- Thư mục đầu ra nhánh Canny: `data/processed/canny/`",
+        "- Thư mục đầu ra nhánh Directional Gradient: `data/processed/directional/`",
         "",
         "## Phân bố train/test",
         "",

@@ -19,7 +19,7 @@ export const mockData = {
   ab_testing_stats: [
     { pipeline: "Morphological", model: "Random Forest", f1_score: 0.92, fps: 45 },
     { pipeline: "Morphological", model: "SVM", f1_score: 0.88, fps: 40 },
-    { pipeline: "Canny", model: "Random Forest", f1_score: 0.74, fps: 60 },
-    { pipeline: "Canny", model: "SVM", f1_score: 0.32, fps: 55 }
+    { pipeline: "Directional Gradient", model: "Random Forest", f1_score: 0.74, fps: 60 },
+    { pipeline: "Directional Gradient", model: "SVM", f1_score: 0.32, fps: 55 }
   ]
 };

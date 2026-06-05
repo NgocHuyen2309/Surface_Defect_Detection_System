@@ -32,7 +32,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.tree import plot_tree
 
 MORPH_FEATURES = ["max_area", "total_area", "max_perimeter", "min_eccentricity"]
-CANNY_FEATURES = ["horiz_length", "vert_length", "diag_length"]
+DIRECTIONAL_FEATURES = ["horiz_length", "vert_length", "diag_length"]
 
 
 def load_features(csv_path: Path, feature_cols: list[str]) -> tuple[pd.DataFrame, pd.Series, pd.DataFrame]:
@@ -76,7 +76,7 @@ def build_rf_pipeline(random_state: int) -> Pipeline:
 
 
 def build_param_grid(fast_grid: bool) -> dict[str, list[Any]]:
-    # Siết chặt tham số để chống overfitting trên các hạt nhiễu của nhánh Canny
+    # Siết chặt tham số để chống overfitting trên các hạt nhiễu của nhánh Directional Gradient
     if fast_grid:
         return {
             "classifier__n_estimators": [50, 100],
@@ -92,46 +92,20 @@ def build_param_grid(fast_grid: bool) -> dict[str, list[Any]]:
     }
 
 
-def defect_free_penalty_score(y_true: np.ndarray | pd.Series, y_pred: np.ndarray) -> float:
-    """
-    Custom metric to penalize False Positives on the 'defect_free' class.
-    In an industrial setting, misclassifying a good fabric (defect_free) as a defect is unacceptable.
-    Additionally, we must effectively catch structural defects (hole, stain) which Canny often misses.
-    """
-    f1_mac = f1_score(y_true, y_pred, average="macro", zero_division=0)
-    
-    classes = list(np.unique(y_true))
-    if "defect_free" in classes:
-        # recall of defect_free: TP / (TP + FN)
-        recall_df = recall_score(y_true, y_pred, labels=["defect_free"], average="macro", zero_division=0)
-        
-        # Precision of defect_free
-        precision_df = precision_score(y_true, y_pred, labels=["defect_free"], average="macro", zero_division=0)
-        
-        # Penalize if it misses 'hole' and 'stain' (blobs)
-        rec_hole = recall_score(y_true, y_pred, labels=["hole"], average="macro", zero_division=0) if "hole" in classes else 0
-        rec_stain = recall_score(y_true, y_pred, labels=["stain"], average="macro", zero_division=0) if "stain" in classes else 0
-
-        # Create a rigorous industrial metric: 
-        # Must have high recall on defect_free, but also catch critical blob errors
-        return float(0.4 * recall_df + 0.2 * precision_df + 0.2 * rec_hole + 0.2 * rec_stain)
-    return float(f1_mac)
-
-
 def tune_random_forest(x_train: pd.DataFrame, y_train: pd.Series, random_state: int, fast_grid: bool) -> tuple[Pipeline, dict]:
     pipeline = build_rf_pipeline(random_state)
     min_class_count = int(y_train.value_counts().min())
 
     cv = StratifiedKFold(n_splits=min(5, max(2, min_class_count)), shuffle=True, random_state=random_state)
-    custom_scorer = make_scorer(defect_free_penalty_score)
     
     grid_search = GridSearchCV(
         estimator=pipeline,
         param_grid=build_param_grid(fast_grid),
-        scoring=custom_scorer,
+        scoring="f1_macro",
         cv=cv,
         n_jobs=-1,
-        refit=True
+        refit=True,
+        verbose=3
     )
     grid_search.fit(x_train, y_train)
     return grid_search.best_estimator_, grid_search.best_params_
@@ -188,11 +162,8 @@ def run_branch_experiment(pipeline_name: str, csv_path: Path, feature_cols: list
     save_feature_importance(model, feature_cols, pipeline_name, output_dir)
     save_sample_tree(model, feature_cols, pipeline_name, output_dir)
 
-    custom_val = defect_free_penalty_score(y_test, y_test_pred)
-
     return {
         "pipeline": pipeline_name,
-        "custom_score": custom_val,
         "f1_weighted": f1_score(y_test, y_test_pred, average="weighted", zero_division=0),
         "accuracy": accuracy_score(y_test, y_test_pred),
         "f1_macro": f1_score(y_test, y_test_pred, average="macro", zero_division=0),
@@ -200,22 +171,22 @@ def run_branch_experiment(pipeline_name: str, csv_path: Path, feature_cols: list
     }
 
 
-def run_experiments(morph_csv: Path, canny_csv: Path, manifest_path: Path, output_dir: Path, models_dir: Path, test_size: float, random_state: int, fast_grid: bool) -> pd.DataFrame:
+def run_experiments(morph_csv: Path, directional_csv: Path, manifest_path: Path, output_dir: Path, models_dir: Path, test_size: float, random_state: int, fast_grid: bool) -> pd.DataFrame:
     output_dir.mkdir(parents=True, exist_ok=True)
     models_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
     if morph_csv.exists():
         results.append(run_branch_experiment("morphological", morph_csv, MORPH_FEATURES, manifest_path, output_dir, models_dir, test_size, random_state, fast_grid))
-    if canny_csv.exists():
-        results.append(run_branch_experiment("canny", canny_csv, CANNY_FEATURES, manifest_path, output_dir, models_dir, test_size, random_state, fast_grid))
+    if directional_csv.exists():
+        results.append(run_branch_experiment("directional", directional_csv, DIRECTIONAL_FEATURES, manifest_path, output_dir, models_dir, test_size, random_state, fast_grid))
 
     summary_df = pd.DataFrame(results)
     summary_path = output_dir / "rf_metrics_summary.csv"
     summary_df.to_csv(summary_path, index=False, encoding="utf-8-sig")
 
-    # Chọn Best Model dựa trên custom_score để ưu tiên Morphological
-    best_row = summary_df.sort_values("custom_score", ascending=False).iloc[0]
+    # Chọn Best Model dựa trên f1_macro thay vì custom_score
+    best_row = summary_df.sort_values("f1_macro", ascending=False).iloc[0]
     best_model_path = Path(str(best_row["model_path"]))
     shutil.copy2(best_model_path, models_dir / "rf_model.pkl")
 
@@ -225,7 +196,7 @@ def run_experiments(morph_csv: Path, canny_csv: Path, manifest_path: Path, outpu
 def parse_args():
     parser = argparse.ArgumentParser(description="Train RF for fabric defect features.")
     parser.add_argument("--morph-csv", type=Path, default=Path("data/processed/morph_features.csv"))
-    parser.add_argument("--canny-csv", type=Path, default=Path("data/processed/canny_features.csv"))
+    parser.add_argument("--directional-csv", type=Path, default=Path("data/processed/directional_features.csv"))
     parser.add_argument("--manifest", type=Path, default=Path("data/raw/dataset_manifest.csv"))
     parser.add_argument("--output-dir", type=Path, default=Path("reports/experiments/random_forest"))
     parser.add_argument("--models-dir", type=Path, default=Path("models"))
@@ -237,13 +208,13 @@ def parse_args():
 
 def main():
     args = parse_args()
-    summary = run_experiments(args.morph_csv, args.canny_csv, args.manifest, args.output_dir, args.models_dir, args.test_size, args.random_state, args.fast_grid)
+    summary = run_experiments(args.morph_csv, args.directional_csv, args.manifest, args.output_dir, args.models_dir, args.test_size, args.random_state, args.fast_grid)
     
     print("\n=== Random Forest Experimental Summary ===")
-    display_cols = ["pipeline", "custom_score", "f1_weighted", "f1_macro", "accuracy"]
+    display_cols = ["pipeline", "f1_macro", "f1_weighted", "accuracy"]
     print(summary[display_cols].to_string(index=False))
     
-    best_pipeline = summary.sort_values("custom_score", ascending=False).iloc[0]["pipeline"]
+    best_pipeline = summary.sort_values("f1_macro", ascending=False).iloc[0]["pipeline"]
     print(f"\nBest Model: {best_pipeline.upper()} (Saved as rf_model.pkl)")
 
 
