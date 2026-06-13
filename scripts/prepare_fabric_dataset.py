@@ -1,4 +1,4 @@
-"""Chuẩn hóa dataset lỗi bề mặt vải về cấu trúc train/test trong data/raw."""
+"""Chuẩn hóa dataset lỗi bề mặt vải về cấu trúc data/raw/train và data/raw/test."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from typing import Iterable
 from sklearn.model_selection import train_test_split
 
 SUPPORTED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
+
+# Các từ khóa này thường xuất hiện trong ảnh mask/annotation/ảnh đã xử lý sẵn.
 MASK_KEYWORDS = {
     "mask",
     "masks",
@@ -27,6 +29,7 @@ MASK_KEYWORDS = {
     "processed",
 }
 
+# Quy tắc suy luận nhãn từ tên thư mục hoặc tên file trong dataset gốc.
 LABEL_RULES = [
     (
         "defect_free",
@@ -75,7 +78,7 @@ def is_image_file(path: Path) -> bool:
 
 
 def contains_mask_keyword(path: Path) -> bool:
-    """Nhận diện file mask hoặc annotation để bỏ qua khi cần."""
+    """Nhận diện file phụ hoặc ảnh đã xử lý sẵn để loại khỏi dataset chính."""
     normalized_parts = {normalize_text(part) for part in path.parts}
     normalized_joined = normalize_text(" ".join(path.parts))
     return any(keyword in normalized_parts or keyword in normalized_joined for keyword in MASK_KEYWORDS)
@@ -92,13 +95,13 @@ def infer_label(path: Path) -> str:
 
 
 def stable_suffix(path: Path) -> str:
-    """Tạo hậu tố ngắn để tránh trùng tên file."""
+    """Tạo hậu tố ngắn để tránh trùng tên file sau khi gom nhiều thư mục."""
     digest = hashlib.sha1(str(path).encode("utf-8")).hexdigest()
     return digest[:8]
 
 
 def iter_source_images(source_dir: Path, skip_masks: bool = True) -> Iterable[Path]:
-    """Duyệt ảnh từ thư mục dataset gốc."""
+    """Duyệt ảnh từ thư mục dataset gốc và bỏ qua file không hợp lệ."""
     for path in sorted(source_dir.rglob("*")):
         if not is_image_file(path):
             continue
@@ -117,6 +120,8 @@ def collect_images_by_label(
 
     for source_path in iter_source_images(source_dir, skip_masks=skip_masks):
         label = infer_label(source_path)
+
+        # max_per_class dùng để tạo tập nhỏ khi cần chạy thử nhanh.
         if max_per_class is not None and len(images_by_label[label]) >= max_per_class:
             continue
         images_by_label[label].append(source_path)
@@ -129,10 +134,11 @@ def split_paths(
     test_size: float,
     random_state: int,
 ) -> tuple[list[Path], list[Path]]:
-    """Chia ảnh của một lớp thành train và test."""
+    """Chia ảnh của từng lớp thành train/test theo tỷ lệ cấu hình."""
     if len(image_paths) < 2:
         return image_paths, []
 
+    # Chia riêng theo từng lớp để tập test vẫn có đại diện của các lớp lỗi.
     train_paths, test_paths = train_test_split(
         image_paths,
         test_size=test_size,
@@ -171,6 +177,8 @@ def write_or_link_items(items: list[PreparedItem], copy_files: bool, dry_run: bo
 
     for item in items:
         item.destination_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # copy phù hợp khi nộp bản chạy độc lập, symlink phù hợp khi muốn tiết kiệm dung lượng.
         if copy_files:
             shutil.copy2(item.source_path, item.destination_path)
         else:
@@ -202,7 +210,7 @@ def prepare_dataset(
 
 
 def write_manifest(items: list[PreparedItem], output_dir: Path, dry_run: bool) -> None:
-    """Ghi file manifest mô tả nguồn gốc từng ảnh."""
+    """Ghi file manifest để truy ngược nguồn gốc từng ảnh."""
     if dry_run:
         return
 

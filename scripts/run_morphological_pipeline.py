@@ -1,6 +1,7 @@
-"""Chạy hàng loạt pipeline Morphological."""
+"""Chạy hàng loạt pipeline Morphological và xuất ảnh minh họa/feature CSV."""
 
 from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
@@ -11,17 +12,19 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
+from feature_extraction import BlobFeatureExtractor, FeatureExporter
 from morphological import run_morphological_pipeline
 from preprocessing import find_images
-from feature_extraction import BlobFeatureExtractor, FeatureExporter
 
 
 def build_output_dir(image_path: Path, raw_dir: Path, output_dir: Path) -> Path:
+    """Tạo thư mục lưu kết quả theo đúng split/lớp/tên ảnh."""
     relative_parent = image_path.relative_to(raw_dir).parent
     return output_dir / relative_parent / image_path.stem
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Khai báo tham số dòng lệnh cho pipeline Morphological."""
     parser = argparse.ArgumentParser(description="Chạy pipeline Hình thái học (Morphological)")
     parser.add_argument("--input", default="data/raw", help="Thư mục dataset đầu vào")
     parser.add_argument("--output", default="data/processed/morphological", help="Thư mục lưu kết quả")
@@ -39,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    """Chạy pipeline trên toàn bộ ảnh và lưu đặc trưng hình học."""
     args = build_parser().parse_args()
     raw_dir = (PROJECT_ROOT / args.input).resolve()
     output_dir = (PROJECT_ROOT / args.output).resolve()
@@ -48,12 +52,17 @@ def main() -> None:
         image_paths = image_paths[: args.limit]
 
     all_features = []
-
     start_time = perf_counter()
-    print(f"Tìm thấy {len(image_paths)} ảnh. Bắt đầu Morphological (Open {args.open_size}x{args.open_size}, Close {args.close_size}x{args.close_size}, {args.iterations} loops)...")
+    print(
+        f"Tìm thấy {len(image_paths)} ảnh. Bắt đầu Morphological "
+        f"(Open {args.open_size}x{args.open_size}, "
+        f"Close {args.close_size}x{args.close_size}, {args.iterations} loops)..."
+    )
 
     for index, image_path in enumerate(image_paths, start=1):
         image_output_dir = build_output_dir(image_path, raw_dir, output_dir)
+
+        # Chạy preprocessing + opening/closing và lưu ảnh trung gian cho từng ảnh.
         results = run_morphological_pipeline(
             image_path=image_path,
             output_dir=image_output_dir,
@@ -67,24 +76,27 @@ def main() -> None:
             close_size=args.close_size,
             iterations=args.iterations,
         )
-        
-        # Gọi Feature Extractor với min_area=50.0 để loại bỏ rác li ti (Vì đã dùng k_std nhạy bén)
+
+        # Trích đặc trưng vùng khối từ mask sau Closing.
         label = image_path.parent.name
         extractor = BlobFeatureExtractor(results["gray"], results["morph_closing"])
         extractor.extract_contours(min_area=50.0)
         feature = extractor.compute_features(filename=image_path.name, label=label)
         all_features.append(feature)
-        
+
+        # Overlay giúp kiểm tra trực quan vùng lỗi đã được phát hiện.
         extractor.save_overlay(image_output_dir / "06_morph_overlay.png")
-        
+
         if index % 100 == 0:
             print(f"[{index}/{len(image_paths)}] Đang xử lý...")
 
+    # Xuất CSV để các mô hình SVM/RF dùng làm dữ liệu đầu vào.
     csv_path = PROJECT_ROOT / "data" / "processed" / "morph_features.csv"
     FeatureExporter.export_morph_csv(all_features, csv_path)
 
     elapsed = perf_counter() - start_time
-    print(f"Hoàn tất. Tổng thời gian: {elapsed:.3f}s | Trung bình: {elapsed / len(image_paths):.3f}s/ảnh")
+    avg_time = elapsed / len(image_paths) if image_paths else 0.0
+    print(f"Hoàn tất. Tổng thời gian: {elapsed:.3f}s | Trung bình: {avg_time:.3f}s/ảnh")
 
 
 if __name__ == "__main__":

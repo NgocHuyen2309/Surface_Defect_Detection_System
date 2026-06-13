@@ -1,7 +1,9 @@
-"""Pipeline Xử lý Hình thái học (Morphological Processing)."""
+"""Pipeline xử lý hình thái học cho các lỗi dạng vùng/khối trên bề mặt vải."""
 
 from __future__ import annotations
+
 from pathlib import Path
+
 import cv2
 import numpy as np
 
@@ -12,10 +14,11 @@ except ImportError:
 
 
 def get_structuring_element(shape: str, size: int) -> np.ndarray:
-    """Tạo phần tử cấu trúc (Structuring Element) với các hình dáng cơ bản."""
+    """Tạo phần tử cấu trúc cho các phép toán hình thái học."""
     if size < 3 or size % 2 == 0:
         raise ValueError("Kích thước Kernel phải là số lẻ và >= 3")
-    
+
+    # Cho phép đổi hình dạng kernel khi cần thử nghiệm trên từng loại vải.
     shape_map = {
         "rect": cv2.MORPH_RECT,
         "cross": cv2.MORPH_CROSS,
@@ -26,12 +29,12 @@ def get_structuring_element(shape: str, size: int) -> np.ndarray:
 
 
 def apply_opening(binary_image: np.ndarray, kernel: np.ndarray, iterations: int = 1) -> np.ndarray:
-    """Phép Opening: Khử nhiễu nền bằng chuỗi Erosion theo sau bởi Dilation."""
+    """Phép Opening: loại bỏ nhiễu nhỏ bằng Erosion rồi Dilation."""
     return cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, kernel, iterations=iterations)
 
 
 def apply_closing(binary_image: np.ndarray, kernel: np.ndarray, iterations: int = 1) -> np.ndarray:
-    """Phép Closing: Lấp lỗ bằng chuỗi Dilation theo sau bởi Erosion (Cascading)."""
+    """Phép Closing: nối và lấp các vùng lỗi bằng Dilation rồi Erosion."""
     return cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel, iterations=iterations)
 
 
@@ -40,37 +43,35 @@ def run_morphological_pipeline(
     output_dir: Path | None = None,
     median_kernel: int = 5,
     defect_mode: str = "both",
-    k_std: float = 3.5,          # Trả lại k_std=3.5 giống Directional để tránh nhiễu vân vải
+    k_std: float = 3.5,
     apply_tophat: bool = True,
-    tophat_kernel: int = 21,     # Đã giảm từ 51 xuống 21 để không bắt lầm vân vải dệt
+    tophat_kernel: int = 21,
     resize_width: int | None = None,
     morph_shape: str = "ellipse",
-    open_size: int = 3,          # Kernel nhỏ cho Opening (Giữ lại lỗi mờ)
-    close_size: int = 5,         # Kernel lớn cho Closing (Kết dính khối)
+    open_size: int = 3,
+    close_size: int = 5,
     iterations: int = 3,
 ) -> dict[str, np.ndarray | float]:
-    """Chạy toàn bộ pipeline: Tiền xử lý -> Statistical Threshold -> Morphological."""
-    
+    """Chạy pipeline: tiền xử lý -> threshold -> Opening -> Closing."""
+    # Tiền xử lý tạo ảnh xám, ảnh đã lọc nhiễu, ảnh cân bằng sáng và binary mask.
     preprocessor = ImagePreprocessor(
         median_kernel=median_kernel,
         resize_width=resize_width,
         defect_mode=defect_mode,
         k_std=k_std,
         apply_tophat=apply_tophat,
-        tophat_kernel=tophat_kernel
+        tophat_kernel=tophat_kernel,
     )
     preprocessing = preprocessor.process(image_path, output_dir)
-    
     binary_mask = preprocessing["binary_mask"]
-    
-    # Tạo 2 bộ Kernel độc lập cho Mở và Đóng
+
+    # Kernel nhỏ cho Opening để xóa nhiễu vân vải li ti.
     kernel_open = get_structuring_element(morph_shape, open_size)
+
+    # Kernel lớn hơn cho Closing để gom vùng lỗi bị đứt đoạn thành khối rõ hơn.
     kernel_close = get_structuring_element(morph_shape, close_size)
-    
-    # Mở bằng Kernel nhỏ (xóa rác 1-2 pixel mà không làm mất vết dơ)
+
     opened_image = apply_opening(binary_mask, kernel_open, iterations=1)
-    
-    # Đóng bằng Kernel lớn (Nối các mảng dơ đứt đoạn thành một khối Stain hoàn chỉnh)
     closed_image = apply_closing(opened_image, kernel_close, iterations=iterations)
 
     results: dict[str, np.ndarray | float] = {
@@ -81,6 +82,7 @@ def run_morphological_pipeline(
         "morph_closing": closed_image,
     }
 
+    # Lưu ảnh minh họa tác động của Opening và Closing cho báo cáo.
     if output_dir is not None:
         save_image(output_dir / "04_morph_opening.png", opened_image)
         save_image(output_dir / "05_morph_closing.png", closed_image)
