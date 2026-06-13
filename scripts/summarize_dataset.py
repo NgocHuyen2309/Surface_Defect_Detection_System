@@ -22,17 +22,22 @@ def iter_images(raw_dir: Path) -> Iterable[Path]:
 
 
 def infer_split_label(path: Path, raw_dir: Path) -> tuple[str, str]:
-    """Lấy split và nhãn từ cấu trúc thư mục dataset."""
+    """Lấy tên split và nhãn từ cấu trúc thư mục dataset."""
     relative_parts = path.relative_to(raw_dir).parts
+
+    # Cấu trúc chuẩn: data/raw/train/<label>/<image> hoặc data/raw/test/<label>/<image>.
     if len(relative_parts) >= 3 and relative_parts[0] in SPLIT_NAMES:
         return relative_parts[0], relative_parts[1]
+
+    # Hỗ trợ trường hợp dataset chỉ có data/raw/<label>/<image>.
     if len(relative_parts) >= 2:
         return "all", relative_parts[0]
+
     return "all", "unlabeled"
 
 
 def image_shape(path: Path) -> tuple[int, int] | None:
-    """Đọc kích thước ảnh, trả về None nếu ảnh lỗi."""
+    """Đọc kích thước ảnh, trả về None nếu ảnh không đọc được."""
     image = cv2.imread(str(path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         return None
@@ -52,6 +57,8 @@ def summarize(raw_dir: Path) -> tuple[dict[str, int], dict[str, int], dict[str, 
         split_counts[split_name] += 1
         class_counts[f"{split_name}/{label}"] += 1
         extension_counts[path.suffix.lower()] += 1
+
+        # Kích thước ảnh giúp xác nhận dataset có cần resize trước khi chạy pipeline hay không.
         shape = image_shape(path)
         if shape is not None:
             height, width = shape
@@ -79,7 +86,7 @@ def write_markdown(
     resolution_counts: dict[str, int],
     output_path: Path,
 ) -> None:
-    """Ghi thống kê dataset dạng Markdown."""
+    """Ghi thống kê dataset dạng Markdown để chèn vào báo cáo."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
     total = sum(split_counts.values())
 
@@ -123,11 +130,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    """Chạy thống kê dataset."""
+    """Chạy thống kê dataset và xuất CSV/Markdown."""
     args = build_parser().parse_args()
     raw_dir = Path(args.input).resolve()
     output_dir = Path(args.output_dir).resolve()
 
+    # Tạo các bảng nhỏ để dùng cho mục mô tả dataset và thực nghiệm.
     split_counts, class_counts, extension_counts, resolution_counts = summarize(raw_dir)
     write_csv(split_counts, output_dir / "split_distribution.csv", "split")
     write_csv(class_counts, output_dir / "class_distribution.csv", "split_class")
